@@ -12,14 +12,13 @@ app.get('/', (_, res) => res.send('Bot is alive!'));
 app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 // Create bot
-const { createClient } = require('bedrock-protocol');
 
-async function connectBot() {
-  try {
     const bot = createClient({
       host: 'kupaleros-rg1D.aternos.me',
       port: 40915,
       username: 'Noxell'
+      offline: true,
+      version: '1.21.120'
     });
 
     bot.on('connect', () => {
