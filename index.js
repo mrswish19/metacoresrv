@@ -13,31 +13,13 @@ app.listen(3000, () => console.log('Keep-alive server running on port 3000'));
 
 // Create bot
 
-function startBot() {
-  console.log('Connecting...');
-
-  const bot = createClient({
-    host: 'kupaleros-rg1D.aternos.me',
-    port: 40915,
-    username: 'Noxell',
-    offline: true,
-    version: '1.21.120'
-  });
-
-  bot.on('join', () => console.log('Connected!'));
-
-  bot.on('disconnect', (r) => {
-    console.log('Disconnected:', r);
-    setTimeout(startBot, 5000);
-  });
-
-  bot.on('error', (e) => {
-    console.log('Error:', e.message);
-    setTimeout(startBot, 5000);
-  });
-}
-
-startBot();
+const bot = createClient({
+  host: 'kupaleros-rg1D.aternos.me',
+  port: 40915,
+  username: 'Noxell',
+  offline: true,
+  version: '1.21.120'
+});
 
 let isNight = false;
 
