@@ -1,44 +1,42 @@
 // behaviors/walkLoop.js
-let tick = 0;
-
 module.exports = function walkLoop(bot) {
   if (!bot?.entity?.position) return;
 
-  // Random walk every few seconds
-  if (tick % 20 === 0) {
-    const yaw = Math.random() * Math.PI * 2; // random direction
-    const speed = 0.3; // move speed per tick
+  // Initialize random direction if undefined
+  if (!bot.pathYaw) bot.pathYaw = Math.random() * 360;
 
-    // Calculate new position based on yaw
-    const dx = Math.sin(yaw) * speed;
-    const dz = Math.cos(yaw) * speed;
+  const speed = 0.2; // movement per tick
+  const rad = bot.pathYaw * (Math.PI / 180);
 
-    const pos = bot.entity.position;
-    const newPos = {
-      x: pos.x + dx,
-      y: pos.y,
-      z: pos.z + dz,
-    };
+  const dx = Math.sin(rad) * speed;
+  const dz = Math.cos(rad) * speed;
 
-    // Send movement packet to server
+  const pos = bot.entity.position;
+  const newPos = {
+    x: pos.x + dx,
+    y: pos.y,
+    z: pos.z + dz
+  };
+
+  try {
     bot.queue('move_player', {
       runtime_id: bot.entity.runtime_id,
       position: newPos,
       pitch: 0,
-      yaw: yaw * (180 / Math.PI),
-      head_yaw: yaw * (180 / Math.PI),
-      mode: 0, // NORMAL mode
+      yaw: bot.pathYaw,
+      head_yaw: bot.pathYaw,
+      mode: 0,
       on_ground: true,
       riding_runtime_id: 0,
-      teleportation_cause: 0,
-      teleportation_item: 0,
+      teleportation_cause: 0
     });
 
-    // Update local position cache
+    // Update local cache
     bot.entity.position = newPos;
 
+    // Log every step
     console.log(`[WalkLoop] Walking to x:${newPos.x.toFixed(2)} z:${newPos.z.toFixed(2)}`);
+  } catch (err) {
+    console.log('WalkLoop error:', err.message);
   }
-
-  tick++;
 };
