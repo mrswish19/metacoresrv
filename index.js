@@ -5,7 +5,7 @@ const behaviorManager = require('./behaviors/behaviorManager');
 const bot = createClient({
   host: 'kupaleros-rg1D.aternos.me',       // Local server
   port: 40915,             // Default Bedrock port
-  username: 'BotNoxell',
+  username: 'Noxell',
   offline: true,           // Offline mode
   version: '1.21.120'
 });
