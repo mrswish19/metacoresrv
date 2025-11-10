@@ -1,7 +1,7 @@
 // behaviorManager.js
 const {
   handleNightSafety,
-  handleLostSafety,   // <-- Added
+  handleLostSafety,
   handleHunger,
   handleMobAvoidance,
   handlePathing,
@@ -34,7 +34,7 @@ module.exports = function behaviorManager(bot) {
 
     // 2️⃣ Lost safety check
     if (handleLostSafety(bot)) {
-      switchBehavior('lostSafety', () => console.log('Finding safe spot (lostSafety)...'));
+      switchBehavior('lostSafety', () => console.log('Finding safe spot...'));
       cooldown = 20;
       return;
     }
@@ -61,9 +61,15 @@ module.exports = function behaviorManager(bot) {
     }
 
     // 6️⃣ Pathing / walking
-    switchBehavior('pathing', () => handlePathing(bot));
-    cooldown = 10;
+    if (activeBehavior !== 'pathing') {
+      switchBehavior('pathing', () => console.log('Starting pathing...'));
+    }
+
+    // Continuous pathing every tick
+    if (activeBehavior === 'pathing') {
+      handlePathing(bot); // or walkLoop(bot)
+    }
   }
 
-  setInterval(loop, 50);
+  setInterval(loop, 50); // runs every 50ms
 };
