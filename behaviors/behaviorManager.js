@@ -1,16 +1,29 @@
-const { handlePathing } = require('./handlers');
+// behaviors/behaviorManager.js
+const walkLoop = require('./walkLoop');
+const { handleHunger, handleLostSafety, handleMobAvoidance, handleNightSafety, respawnIfDead } = require('./handlers');
 
 module.exports = function behaviorManager(bot) {
-  console.log('BehaviorManager started: bot will move every tick');
+  console.log('BehaviorManager running');
 
-  // Randomly change pathYaw every 5 seconds
+  // Random pathYaw for roaming
   setInterval(() => {
-    if (bot.pathYaw !== undefined) bot.pathYaw = Math.random() * 360;
+    bot.pathYaw = Math.random() * 360;
   }, 5000);
 
-  // Main loop: move the bot every 50ms (~20 ticks/sec)
+  // Continuous walking
   setInterval(() => {
     if (!bot?.entity?.position) return;
-    handlePathing(bot);
+    walkLoop(bot);
   }, 50);
+
+  // Other behaviors every 1s
+  setInterval(() => {
+    if (!bot?.entity) return;
+
+    if (respawnIfDead(bot)) return;
+    if (handleLostSafety(bot)) return;
+    if (handleHunger(bot)) return;
+    if (handleNightSafety(bot)) return;
+    if (handleMobAvoidance(bot)) return;
+  }, 1000);
 };
