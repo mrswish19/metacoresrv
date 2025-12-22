@@ -11,7 +11,7 @@ const RENDER_URL = process.env.RENDER_URL || 'https://metacoresrv.onrender.com';
 const SERVER = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
-  username: 'Alisha2930',
+  username: 'Alisha1345',
   version: '1.21.120',
   offline: true
 };
@@ -169,18 +169,15 @@ function startMcBot() {
 
   mcBot.on('text', p => console.log(`[MC] ${p.message}`));
 
-  // Detect player join
   mcBot.on('player_join', player => {
     const geyserName = '.' + player.name.replace(/ /g, '_');
     onlinePlayers[geyserName] = { lastTick: Date.now() };
 
-    // Update last_seen in DB
     db.run(`UPDATE users SET last_seen=? WHERE geyser_name=?`, [Date.now(), geyserName]);
 
     db.get(`SELECT playtime FROM users WHERE geyser_name=?`, [geyserName], (e, r) => {
       if (!r) return;
       if (r.playtime <= 0) {
-        // Kick immediately if no time
         mcBot.queue('command_request', {
           command: `kick ${player.name} Add Time First!`,
           type: 1,
@@ -208,12 +205,12 @@ setInterval(() => {
       }
     });
   }
-}, 1000); // deduct 1 second every second
+}, 1000);
 
 // ================= INACTIVE PLAYER CLEANUP =================
 setInterval(() => {
   const now = Date.now();
-  const oneWeek = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+  const oneWeek = 7 * 24 * 60 * 60 * 1000;
 
   db.all(`SELECT telegram_id, geyser_name, last_seen FROM users`, [], (err, rows) => {
     if (!rows) return;
@@ -227,8 +224,9 @@ setInterval(() => {
       }
     });
   });
-}, 60 * 60 * 1000); // check every 1 hour
+}, 60 * 60 * 1000);
 
+// ================= RECONNECT HELPER =================
 function reconnectMcBot() {
   if (reconnecting) return;
   reconnecting = true;
