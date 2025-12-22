@@ -5,8 +5,12 @@ const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 
 // ================= CONFIG =================
-const 8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0 = process.env.TELEGRAM_TOKEN;
-const https://metacoresrv.onrender.com = process.env.RENDER_URL; // your Render URL e.g., https://metacoresrv.onrender.com
+// ⚠️ Replace these with your actual values
+// Option 1: Use environment variables (recommended)
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0';
+const RENDER_URL = process.env.RENDER_URL || 'https://metacoresrv.onrender.com';
+
+// Minecraft server info
 const SERVER = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
@@ -27,10 +31,11 @@ let reconnecting = false;
 const onlinePlayers = {};
 
 // ================= TELEGRAM BOT =================
+// Using webhooks (no 409 conflict)
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 bot.setWebHook(`${RENDER_URL}/bot${TELEGRAM_TOKEN}`);
 
-// Telegram webhook endpoint
+// Webhook endpoint
 app.post(`/bot${TELEGRAM_TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
@@ -48,6 +53,7 @@ db.serialize(() => {
       last_reward INTEGER
     )
   `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS reward_tokens (
       token TEXT PRIMARY KEY,
@@ -76,6 +82,7 @@ const menuKeyboard = {
     resize_keyboard: true
   }
 };
+
 const waitingForGamertag = new Set();
 
 // ================= TELEGRAM HANDLER =================
@@ -173,7 +180,7 @@ function startMcBot() {
   mcBot.on('text', p => console.log(`[MC] ${p.message}`));
 
   mcBot.on('player_join', player => {
-    const geyserName = '.' + player.name.replace(/ /g, '_');
+    const geyserName = formatGeyserName(player.name);
 
     if (!onlinePlayers[geyserName]) onlinePlayers[geyserName] = { lastTick: Date.now(), lastKick: 0 };
 
