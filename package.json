@@ -1,5 +1,5 @@
 {
-  "name": "metacresrv",
+  "name": "metacoresrv",
   "version": "1.0.0",
   "description": "Minecraft Bedrock + Telegram bot for Render",
   "main": "index.js",
