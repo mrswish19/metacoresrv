@@ -10,7 +10,6 @@ const express = require('express');
 /* ======================
    CONFIG
 ====================== */
-// Replace with your own tokens and Render URL
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0';
 const RENDER_URL = process.env.RENDER_URL || 'https://metacoresrv.onrender.com';
 
@@ -85,10 +84,22 @@ bot.on('message', msg => {
     const bedrock = text.trim();
     const geyser = '.' + bedrock.replace(/ /g, '_');
 
-    db.run(`INSERT OR REPLACE INTO users (telegram_id, gamertag, geyser_name, last_seen) VALUES (?, ?, ?, ?)`, [chatId, bedrock, geyser, Date.now()]);
+    // Insert into DB
+    db.run(`INSERT OR REPLACE INTO users (telegram_id, gamertag, geyser_name, last_seen) VALUES (?, ?, ?, ?)`,
+           [chatId, bedrock, geyser, Date.now()]);
     waitingForGamertag.delete(chatId);
 
-    return bot.sendMessage(chatId, `✅ Whitelisted!\n🎮 Bedrock: **${bedrock}**\n🧩 Server name: \`${geyser}\``, { parse_mode: 'Markdown', reply_markup: menuKeyboard });
+    // ✅ Send whitelist command to Minecraft bot
+    if (mcBot) {
+      mcBot.queue('command_request', {
+        command: `whitelist add ${geyser}`,
+        type: 1,   // run command
+        version: 1
+      });
+    }
+
+    bot.sendMessage(chatId, `✅ Whitelisted!\n🎮 Bedrock: **${bedrock}**\n🧩 Server name: \`${geyser}\`\n✅ Added to server whitelist!`,
+                    { parse_mode: 'Markdown', reply_markup: menuKeyboard });
   }
 
   if (text === '⏱ Play Time Left') {
@@ -161,7 +172,7 @@ let mcBot = null;
 let reconnecting = false;
 
 function startMcBot() {
-  console.log('🚀 Starting bot...');
+  console.log('🚀 Starting Minecraft bot...');
 
   mcBot = createClient(SERVER);
 
