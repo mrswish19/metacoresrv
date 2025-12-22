@@ -10,8 +10,8 @@ const TELEGRAM_TOKEN = '8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0';
 const RENDER_URL = 'https://metacoresrv.onrender.com';
 
 const SERVER = {
-  host: 'kupaleros-rg1D.aternos.me',
-  port: 40915
+  host: 'metacoresrv.aternos.me',
+  port: 36614
 };
 
 // ================= INIT =================
