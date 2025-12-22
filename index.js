@@ -1,37 +1,64 @@
-/* ===== IMPORTS ===== */
+// ================= IMPORTS =================
 const TelegramBot = require('node-telegram-bot-api');
-const { createClient } = require('bedrock-protocol');
 const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 const net = require('net');
+const { createClient } = require('bedrock-protocol');
 
-/* ===== CONFIG ===== */
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const MC_BOT_NAME = process.env.MC_BOT_NAME || 'Noxell';
+// ================= CONFIG =================
+const TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN';
+const RENDER_URL = 'https://YOUR-RENDER-APP.onrender.com';
+
 const SERVER = {
-  host: process.env.SERVER_HOST,
-  port: parseInt(process.env.SERVER_PORT),
-  version: process.env.SERVER_VERSION,
-  offline: process.env.SERVER_OFFLINE === 'true'
+  host: 'kupaleros-rg1D.aternos.me',
+  port: 40915
 };
 
-/* ===== DATABASE ===== */
-const db = new sqlite3.Database('./database.db');
-
-db.run(`
-CREATE TABLE IF NOT EXISTS users (
-  telegram_id INTEGER PRIMARY KEY,
-  gamertag TEXT,
-  playtime INTEGER DEFAULT 0,
-  last_join INTEGER,
-  last_seen INTEGER
-)
-`);
-
-/* ===== TELEGRAM BOT ===== */
+// ================= INIT =================
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+const app = express();
+const db = new sqlite3.Database('./data.db');
 
-// Menu keyboard
+// ================= MINECRAFT BOT =================
+const mcBot = createClient({
+  host: SERVER.host,
+  port: SERVER.port,
+  offline: true,
+  username: 'TimeGuardBot'
+});
+
+// ================= DATABASE =================
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      telegram_id TEXT PRIMARY KEY,
+      gamertag TEXT,
+      geyser_name TEXT,
+      playtime INTEGER DEFAULT 0,
+      last_seen INTEGER,
+      last_reward INTEGER
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS reward_tokens (
+      token TEXT PRIMARY KEY,
+      telegram_id TEXT,
+      created_at INTEGER
+    )
+  `);
+});
+
+// ================= HELPERS =================
+function formatGeyserName(name) {
+  return '.' + name.trim().replace(/ /g, '_');
+}
+
+function generateToken() {
+  return Math.random().toString(36).substring(2) + Date.now();
+}
+
+// ================= MENU =================
 const menuKeyboard = {
   reply_markup: {
     keyboard: [
@@ -43,178 +70,244 @@ const menuKeyboard = {
   }
 };
 
-// Track waiting users
 const waitingForGamertag = new Set();
 
-// Start command
-bot.onText(/\/start/, msg => {
-  bot.sendMessage(msg.chat.id, '👋 Welcome!\nChoose an option:', menuKeyboard);
-});
-
-// Handle messages
+// ================= TELEGRAM HANDLER =================
 bot.on('message', msg => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
-  if (!text) return;
+  if (text === '/start') {
+    return bot.sendMessage(
+      chatId,
+      '👋 Welcome!\nUse the menu below.',
+      menuKeyboard
+    );
+  }
 
-  // ===== Whitelist Here =====
+  // ===== WHITELIST =====
   if (text === '🟢 Whitelist Here') {
     waitingForGamertag.add(chatId);
     return bot.sendMessage(
       chatId,
-      '✏️ Please type your **Minecraft Username**.\n⚠️ Make sure it is correct and **case-sensitive**, otherwise you won’t be whitelisted!',
+      '✏️ Enter your **Minecraft Bedrock username**.\n⚠️ Case-sensitive!',
       { parse_mode: 'Markdown', reply_markup: menuKeyboard }
     );
   }
 
-  // Receive gamertag
   if (waitingForGamertag.has(chatId)) {
-    const gamertag = text.trim();
-    if (!/^[a-zA-Z0-9_]{3,16}$/.test(gamertag))
-      return bot.sendMessage(chatId, '❌ Invalid gamertag. Try again.');
+    const bedrock = text.trim();
+    const geyser = formatGeyserName(bedrock);
 
     db.run(
-      `INSERT OR REPLACE INTO users 
-       (telegram_id, gamertag, playtime, last_join, last_seen)
-       VALUES (?, ?, COALESCE((SELECT playtime FROM users WHERE telegram_id=?), 0), ?, ?)`,
-      [chatId, gamertag, chatId, Date.now(), Date.now()]
+      `INSERT OR REPLACE INTO users
+       (telegram_id, gamertag, geyser_name, last_seen)
+       VALUES (?, ?, ?, ?)`,
+      [chatId, bedrock, geyser, Date.now()]
     );
 
     waitingForGamertag.delete(chatId);
 
-    bot.sendMessage(
+    mcBot.queue('command_request', {
+      command: `/whitelist add ${geyser}`,
+      origin: { type: 0, uuid: '', request_id: '' },
+      internal: false,
+      version: 66
+    });
+
+    return bot.sendMessage(
       chatId,
-      `✅ Gamertag **${gamertag}** saved successfully!\nYou can now click ➕ Add Time to start playing.\nMake sure to join the Minecraft server with the **exact username**.`,
+      `✅ Whitelisted!\n\n🎮 Bedrock: **${bedrock}**\n🧩 Server: \`${geyser}\``,
       { parse_mode: 'Markdown', reply_markup: menuKeyboard }
     );
-    return;
   }
 
-  // ===== Play Time Left =====
+  // ===== PLAY TIME LEFT =====
   if (text === '⏱ Play Time Left') {
-    db.get(`SELECT playtime FROM users WHERE telegram_id=?`, [chatId], (err, row) => {
-      if (!row) return bot.sendMessage(chatId, '❌ You are not whitelisted yet.');
-      const minutes = Math.floor(row.playtime / 60);
-      bot.sendMessage(chatId, `⏱ Play time left: **${minutes} minutes**`, { parse_mode: 'Markdown' });
-    });
-    return;
+    db.get(
+      `SELECT playtime FROM users WHERE telegram_id=?`,
+      [chatId],
+      (e, r) => {
+        const mins = Math.floor((r?.playtime || 0) / 60);
+        bot.sendMessage(chatId, `⏱ Time Left: **${mins} min**`, {
+          parse_mode: 'Markdown',
+          reply_markup: menuKeyboard
+        });
+      }
+    );
   }
 
-  // ===== Add Time =====
+  // ===== ADD TIME (ANTI-ABUSE) =====
   if (text === '➕ Add Time') {
-    const monetagLink = `https://MONETAG_LINK?subid=${chatId}`;
-    bot.sendMessage(chatId, '🎥 Watch the rewarded ad to get **+3 minutes**:', {
-      reply_markup: { inline_keyboard: [[{ text: '🎥 Watch Ad', url: monetagLink }]] },
-      parse_mode: 'Markdown'
-    });
-    return;
+    db.get(
+      `SELECT last_reward FROM users WHERE telegram_id=?`,
+      [chatId],
+      (e, r) => {
+        const now = Date.now();
+        if (r?.last_reward && now - r.last_reward < 180000) {
+          return bot.sendMessage(chatId, '⏳ Please wait before next ad.');
+        }
+
+        const token = generateToken();
+        db.run(
+          `INSERT INTO reward_tokens VALUES (?, ?, ?)`,
+          [token, chatId, now]
+        );
+
+        bot.sendMessage(
+          chatId,
+          '🎥 Watch ad to get **+3 minutes**',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '▶ Watch Ad', url: `${RENDER_URL}/reward?token=${token}` }]
+              ]
+            }
+          }
+        );
+      }
+    );
   }
 
-  // ===== Check IP and PORT =====
+  // ===== CHECK SERVER =====
   if (text === '🌐 Check IP and PORT') {
-    const serverIP = SERVER.host;
-    const serverPort = SERVER.port;
-
-    checkServerStatus(serverIP, serverPort).then(status => {
-      bot.sendMessage(chatId,
-        `🌐 **Server Info**\nIP: ${serverIP}\nPORT: ${serverPort}\nStatus: ${status}`,
-        { parse_mode: 'Markdown', reply_markup: menuKeyboard }
-      );
-    }).catch(() => {
-      bot.sendMessage(chatId,
-        `🌐 **Server Info**\nIP: ${serverIP}\nPORT: ${serverPort}\nStatus: ❌ Offline`,
-        { parse_mode: 'Markdown', reply_markup: menuKeyboard }
-      );
-    });
-    return;
+    checkServerStatus(SERVER.host, SERVER.port)
+      .then(() => bot.sendMessage(
+        chatId,
+        `🌐 IP: \`${SERVER.host}\`\nPORT: \`${SERVER.port}\`\nStatus: ✅ Online`,
+        { parse_mode: 'Markdown' }
+      ))
+      .catch(() => bot.sendMessage(chatId, '❌ Server Offline'));
   }
 });
 
-/* ===== CHECK SERVER STATUS FUNCTION ===== */
+// ================= SERVER STATUS =================
 function checkServerStatus(host, port) {
   return new Promise((resolve, reject) => {
-    const socket = new net.Socket();
-    socket.setTimeout(2000); // 2 seconds
-    socket.on('connect', () => { socket.destroy(); resolve('✅ Online'); });
-    socket.on('timeout', () => { socket.destroy(); reject(); });
-    socket.on('error', () => reject());
-    socket.connect(port, host);
+    const s = new net.Socket();
+    s.setTimeout(2000);
+    s.on('connect', () => { s.destroy(); resolve(); });
+    s.on('error', reject);
+    s.on('timeout', reject);
+    s.connect(port, host);
   });
 }
 
-/* ===== EXPRESS SERVER FOR MONETAG POSTBACK ===== */
-const app = express();
-app.get('/monetag', (req, res) => {
-  const telegramId = req.query.subid;
-  if (!telegramId) return res.send('Missing subid');
+// ================= REALTIME PLAYTIME =================
+const onlinePlayers = new Map();
 
-  db.run(`UPDATE users SET playtime = playtime + 180 WHERE telegram_id=?`, [telegramId], function(err) {
-    if (err) return res.status(500).send('Error');
-    bot.sendMessage(telegramId, '✅ +3 minutes added! You can now join the server.');
-    res.send('OK');
-  });
+function startDeduction(name) {
+  if (onlinePlayers.has(name)) return;
+
+  const int = setInterval(() => {
+    db.get(
+      `SELECT playtime FROM users WHERE geyser_name=?`,
+      [name],
+      (e, r) => {
+        if (!r || r.playtime <= 0) {
+          mcBot.queue('command_request', {
+            command: `/kick ${name} §cAdd Time First!`,
+            origin: { type: 0, uuid: '', request_id: '' },
+            internal: false,
+            version: 66
+          });
+          stopDeduction(name);
+          return;
+        }
+
+        db.run(
+          `UPDATE users SET playtime = playtime - 1 WHERE geyser_name=?`,
+          [name]
+        );
+      }
+    );
+  }, 1000);
+
+  onlinePlayers.set(name, int);
+}
+
+function stopDeduction(name) {
+  if (onlinePlayers.has(name)) {
+    clearInterval(onlinePlayers.get(name));
+    onlinePlayers.delete(name);
+  }
+}
+
+// ================= JOIN / LEAVE =================
+mcBot.on('text', p => {
+  const msg = p.message.toLowerCase();
+  const name = p.message.split(' ')[0];
+
+  if (msg.includes('joined')) {
+    db.get(
+      `SELECT playtime FROM users WHERE geyser_name=?`,
+      [name],
+      (e, r) => {
+        if (!r || r.playtime <= 0) {
+          mcBot.queue('command_request', {
+            command: `/kick ${name} §cAdd Time First!`,
+            origin: { type: 0, uuid: '', request_id: '' },
+            internal: false,
+            version: 66
+          });
+        } else {
+          startDeduction(name);
+        }
+      }
+    );
+  }
+
+  if (msg.includes('left')) {
+    stopDeduction(name);
+  }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('🟢 Express server running'));
+// ================= REWARD WEB =================
+app.get('/reward', (req, res) => {
+  const token = req.query.token;
+  if (!token) return res.send('Invalid');
 
-/* ===== MINECRAFT BOT ===== */
-const mcBot = createClient({
-  username: MC_BOT_NAME,
-  ...SERVER
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<script src="//libtl.com/sdk.js" data-zone="10359465" data-sdk="show_10359465"></script>
+</head>
+<body style="text-align:center;font-family:sans-serif">
+<h2>Watch Ad</h2>
+<button onclick="show_10359465().then(()=>fetch('/reward-success?token=${token}'))">
+Watch
+</button>
+</body>
+</html>
+`);
 });
 
-mcBot.on('spawn', () => console.log('✅ Minecraft bot spawned & OP'));
-mcBot.on('text', p => handleMCMessage(p.message));
-mcBot.on('kick', () => setTimeout(() => mcBot.connect(), 5000));
-mcBot.on('error', e => console.log('⚠️ Error:', e.message));
+app.get('/reward-success', (req, res) => {
+  const token = req.query.token;
 
-/* ===== MC LOGIC ===== */
-function sendMCCommand(command) {
-  mcBot.queue('command_request', {
-    command,
-    origin: { type: 0, uuid: '', request_id: '' },
-    internal: false,
-    version: 66
-  });
-}
+  db.get(
+    `SELECT telegram_id FROM reward_tokens WHERE token=?`,
+    [token],
+    (e, r) => {
+      if (!r) return res.send('Used');
 
-function handleMCMessage(msg) {
-  const joinMatch = msg.match(/(\S+) joined the game/);
-  if (joinMatch) onPlayerJoin(joinMatch[1].replace('.', ''));
+      db.serialize(() => {
+        db.run(`DELETE FROM reward_tokens WHERE token=?`, [token]);
+        db.run(
+          `UPDATE users SET playtime = playtime + 180, last_reward=? WHERE telegram_id=?`,
+          [Date.now(), r.telegram_id]
+        );
+      });
 
-  const leftMatch = msg.match(/(\S+) left the game/);
-  if (leftMatch) onPlayerLeave(leftMatch[1].replace('.', ''));
-}
-
-function onPlayerJoin(player) {
-  db.get(`SELECT playtime FROM users WHERE gamertag=?`, [player], (err, row) => {
-    if (!row || row.playtime <= 0) {
-      sendMCCommand(`/kick ${player} Add Time First!`);
-    } else {
-      db.run(`UPDATE users SET last_seen=? WHERE gamertag=?`, [Date.now(), player]);
+      bot.sendMessage(r.telegram_id, '✅ +3 minutes added!');
+      res.send('OK');
     }
-  });
-}
+  );
+});
 
-function onPlayerLeave(player) {
-  db.run(`UPDATE users SET last_join=? WHERE gamertag=?`, [Date.now(), player]);
-}
-
-/* ===== TIME COUNTDOWN (online players only) ===== */
-setInterval(() => {
-  db.all(`SELECT gamertag, playtime FROM users WHERE playtime > 0`, (err, rows) => {
-    rows.forEach(user => db.run(`UPDATE users SET playtime = playtime - 1 WHERE gamertag=?`, [user.gamertag]));
-  });
-}, 1000);
-
-/* ===== AUTO UNWHITELIST AFTER 7 DAYS ===== */
-setInterval(() => {
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  db.all(`SELECT gamertag FROM users WHERE last_seen < ?`, [weekAgo], (err, rows) => {
-    rows.forEach(u => {
-      sendMCCommand(`/whitelist remove .${u.gamertag}`);
-      db.run(`DELETE FROM users WHERE gamertag=?`, [u.gamertag]);
-    });
-  });
-}, 24 * 60 * 60 * 1000);
+// ================= START WEB =================
+app.listen(process.env.PORT || 3000, () =>
+  console.log('🌐 Web running')
+);
