@@ -16,7 +16,7 @@ const RENDER_URL = process.env.RENDER_URL || 'https://metacoresrv.onrender.com';
 const SERVER = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
-  username: 'Alisha3356',
+  username: 'Noxell',
   version: '1.21.120',
   offline: true
 };
@@ -89,13 +89,11 @@ bot.on('message', msg => {
            [chatId, bedrock, geyser, Date.now()]);
     waitingForGamertag.delete(chatId);
 
-    // ✅ Send whitelist command to Minecraft bot
+    // ✅ Send whitelist command to Minecraft bot and show in chat
     if (mcBot) {
-      mcBot.queue('command_request', {
-        command: `whitelist add ${geyser}`,
-        type: 1,   // run command
-        version: 1
-      });
+      const cmd = `/whitelist add ${geyser}`;
+      mcBot.queue('command_request', { command: cmd, type: 1, version: 1 }); // runs command
+      mcBot.queue('text', { message: cmd }); // appears in server chat
     }
 
     bot.sendMessage(chatId, `✅ Whitelisted!\n🎮 Bedrock: **${bedrock}**\n🧩 Server name: \`${geyser}\`\n✅ Added to server whitelist!`,
@@ -166,7 +164,7 @@ app.get('/reward-success', (req, res) => {
 });
 
 /* ======================
-   WORKING MINECRAFT BOT (UNCHANGED)
+   WORKING MINECRAFT BOT
 ====================== */
 let mcBot = null;
 let reconnecting = false;
