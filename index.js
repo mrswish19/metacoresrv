@@ -6,7 +6,7 @@ const net = require('net');
 const { createClient } = require('bedrock-protocol');
 
 // ================= CONFIG =================
-const TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN';
+const TELEGRAM_TOKEN = '8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0';
 const RENDER_URL = 'https://YOUR-RENDER-APP.onrender.com';
 
 const SERVER = {
