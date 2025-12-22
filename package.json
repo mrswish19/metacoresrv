@@ -1,13 +1,15 @@
 {
-  "name": "node-telegram-bot-api",
+  "name": "metacresrv",
   "version": "1.0.0",
-  "description": "Minecraft Bedrock bot for Render",
+  "description": "Minecraft Bedrock + Telegram bot for Render",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "bedrock-protocol": "3.50.0",
-    "express": "^4.18.2"
+    "bedrock-protocol": "^3.50.0",
+    "express": "^4.18.2",
+    "node-telegram-bot-api": "^0.61.0",
+    "sqlite3": "^5.1.2"
   }
 }
