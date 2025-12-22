@@ -16,7 +16,7 @@ const RENDER_URL = process.env.RENDER_URL || 'https://metacoresrv.onrender.com';
 const SERVER = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
-  username: 'Noxell',
+  username: 'Alisha3356',
   version: '1.21.120',
   offline: true
 };
