@@ -3,27 +3,43 @@ const { createClient } = require('bedrock-protocol');
 const TelegramBot = require('node-telegram-bot-api');
 const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
-const http = require('http');
 
 // ================= CONFIG =================
+// ⚠️ Replace these with your actual values
+// Option 1: Use environment variables (recommended)
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0';
 const RENDER_URL = process.env.RENDER_URL || 'https://metacoresrv.onrender.com';
+
+// Minecraft server info
 const SERVER = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
-  username: 'Alisha1336',
+  username: 'Alisha1628',
   version: '1.21.120',
   offline: true
 };
 
 // ================= INIT =================
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 const app = express();
+app.use(express.json());
 const db = new sqlite3.Database('./data.db');
 
 let mcBot = null;
 let reconnecting = false;
-const onlinePlayers = {}; // track online players for playtime deduction
+
+// Track online players: lastTick for playtime deduction, lastKick for cooldown
+const onlinePlayers = {};
+
+// ================= TELEGRAM BOT =================
+// Using webhooks (no 409 conflict)
+const bot = new TelegramBot(TELEGRAM_TOKEN);
+bot.setWebHook(`${RENDER_URL}/bot${TELEGRAM_TOKEN}`);
+
+// Webhook endpoint
+app.post(`/bot${TELEGRAM_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 // ================= DATABASE =================
 db.serialize(() => {
@@ -51,7 +67,6 @@ db.serialize(() => {
 function formatGeyserName(name) {
   return '.' + name.trim().replace(/ /g, '_');
 }
-
 function generateToken() {
   return Math.random().toString(36).substring(2) + Date.now();
 }
@@ -67,6 +82,7 @@ const menuKeyboard = {
     resize_keyboard: true
   }
 };
+
 const waitingForGamertag = new Set();
 
 // ================= TELEGRAM HANDLER =================
@@ -74,9 +90,7 @@ bot.on('message', msg => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
-  if (text === '/start') {
-    return bot.sendMessage(chatId, '👋 Welcome!\nUse the menu below.', menuKeyboard);
-  }
+  if (text === '/start') return bot.sendMessage(chatId, '👋 Welcome!\nUse the menu below.', menuKeyboard);
 
   if (text === '🟢 Whitelist Here') {
     waitingForGamertag.add(chatId);
@@ -90,7 +104,7 @@ bot.on('message', msg => {
     db.run(`INSERT OR REPLACE INTO users (telegram_id, gamertag, geyser_name, last_seen) VALUES (?, ?, ?, ?)`, [chatId, bedrock, geyser, Date.now()]);
     waitingForGamertag.delete(chatId);
 
-    return bot.sendMessage(chatId, `✅ Whitelisted!\n\n🎮 Bedrock: **${bedrock}**\n🧩 Server name: \`${geyser}\``, { parse_mode: 'Markdown', reply_markup: menuKeyboard });
+    return bot.sendMessage(chatId, `✅ Whitelisted!\n🎮 Bedrock: **${bedrock}**\n🧩 Server name: \`${geyser}\``, { parse_mode: 'Markdown', reply_markup: menuKeyboard });
   }
 
   if (text === '⏱ Play Time Left') {
@@ -120,13 +134,12 @@ bot.on('message', msg => {
   }
 });
 
-// ================= REWARD WEB =================
+// ================= REWARD PAGES =================
 app.get('/reward', (req, res) => {
   const token = req.query.token;
   if (!token) return res.send('Invalid');
 
   res.send(`
-<!DOCTYPE html>
 <html>
 <head>
 <script src="//libtl.com/sdk.js" data-zone="10359465" data-sdk="show_10359465"></script>
@@ -141,15 +154,12 @@ app.get('/reward', (req, res) => {
 
 app.get('/reward-success', (req, res) => {
   const token = req.query.token;
-
   db.get(`SELECT telegram_id FROM reward_tokens WHERE token=?`, [token], (e, r) => {
     if (!r) return res.send('Used');
-
     db.serialize(() => {
       db.run(`DELETE FROM reward_tokens WHERE token=?`, [token]);
       db.run(`UPDATE users SET playtime = playtime + 180, last_reward=? WHERE telegram_id=?`, [Date.now(), r.telegram_id]);
     });
-
     bot.sendMessage(r.telegram_id, '✅ +3 minutes added!');
     res.send('OK');
   });
@@ -169,23 +179,19 @@ function startMcBot() {
 
   mcBot.on('text', p => console.log(`[MC] ${p.message}`));
 
-  // Detect player join
   mcBot.on('player_join', player => {
-    const geyserName = '.' + player.name.replace(/ /g, '_');
-    onlinePlayers[geyserName] = { lastTick: Date.now() };
+    const geyserName = formatGeyserName(player.name);
 
-    // Update last_seen in DB
+    if (!onlinePlayers[geyserName]) onlinePlayers[geyserName] = { lastTick: Date.now(), lastKick: 0 };
+
     db.run(`UPDATE users SET last_seen=? WHERE geyser_name=?`, [Date.now(), geyserName]);
 
     db.get(`SELECT playtime FROM users WHERE geyser_name=?`, [geyserName], (e, r) => {
       if (!r) return;
-      if (r.playtime <= 0) {
-        // Kick immediately if no time
-        mcBot.queue('command_request', {
-          command: `kick ${player.name} Add Time First!`,
-          type: 1,
-          version: 1
-        });
+      const now = Date.now();
+      if (r.playtime <= 0 && now - onlinePlayers[geyserName].lastKick > 10000) { // 10s cooldown
+        mcBot.queue('command_request', { command: `kick ${player.name} Add Time First!`, type: 1, version: 1 });
+        onlinePlayers[geyserName].lastKick = now;
       }
     });
   });
@@ -194,41 +200,43 @@ function startMcBot() {
   mcBot.on('error', e => { console.log('⚠️ MC Error:', e.message); reconnectMcBot(); });
 }
 
-// ================= PLAYTIME DEDUCTION LOOP =================
+// ================= PLAYTIME DEDUCTION =================
 setInterval(() => {
   const now = Date.now();
   for (const geyserName in onlinePlayers) {
-    db.get(`SELECT playtime, telegram_id FROM users WHERE geyser_name=?`, [geyserName], (e, r) => {
+    db.get(`SELECT playtime FROM users WHERE geyser_name=?`, [geyserName], (e, r) => {
       if (!r) return;
+
       if (r.playtime > 0) {
         db.run(`UPDATE users SET playtime = playtime - 1 WHERE geyser_name=?`, [geyserName]);
         onlinePlayers[geyserName].lastTick = now;
-      } else {
+      } else if (now - onlinePlayers[geyserName].lastKick > 10000) { // 10s cooldown
         mcBot.queue('command_request', { command: `kick ${geyserName} Add Time First!`, type: 1, version: 1 });
+        onlinePlayers[geyserName].lastKick = now;
       }
     });
   }
-}, 1000); // deduct 1 second every second
+}, 1000);
 
 // ================= INACTIVE PLAYER CLEANUP =================
 setInterval(() => {
   const now = Date.now();
-  const oneWeek = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+  const oneWeek = 7 * 24 * 60 * 60 * 1000;
 
   db.all(`SELECT telegram_id, geyser_name, last_seen FROM users`, [], (err, rows) => {
     if (!rows) return;
-
     rows.forEach(row => {
       if (!row.last_seen) return;
       if (now - row.last_seen > oneWeek) {
         db.run(`DELETE FROM users WHERE telegram_id=?`, [row.telegram_id]);
-        bot.sendMessage(row.telegram_id, `⚠️ You have been removed from the whitelist because you didn't join the server in the last 7 days.`);
+        bot.sendMessage(row.telegram_id, '⚠️ Removed from whitelist due to inactivity.');
         console.log(`🗑 Removed inactive player: ${row.geyser_name}`);
       }
     });
   });
-}, 60 * 60 * 1000); // check every 1 hour
+}, 60 * 60 * 1000);
 
+// ================= RECONNECT HELPER =================
 function reconnectMcBot() {
   if (reconnecting) return;
   reconnecting = true;
@@ -238,7 +246,7 @@ function reconnectMcBot() {
 
 // ================= START WEB =================
 const PORT = process.env.PORT || 3000;
-http.createServer(app).listen(PORT, '0.0.0.0', () => console.log(`🌐 Web running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🌐 Web running on port ${PORT}`));
 
 // ================= START EVERYTHING =================
 startMcBot();
