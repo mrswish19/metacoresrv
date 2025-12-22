@@ -5,12 +5,12 @@ const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 
 // ================= CONFIG =================
-const TELEGRAM_TOKEN = process.env.8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0;
-const RENDER_URL = process.env.https://metacoresrv.onrender.com; // your Render URL e.g., https://metacoresrv.onrender.com
+const 8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0 = process.env.TELEGRAM_TOKEN;
+const https://metacoresrv.onrender.com = process.env.RENDER_URL; // your Render URL e.g., https://metacoresrv.onrender.com
 const SERVER = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
-  username: 'Alisha3568',
+  username: 'Alisha2435',
   version: '1.21.120',
   offline: true
 };
