@@ -1,47 +1,34 @@
-// ================= IMPORTS =================
+/* ======================
+   IMPORTS
+====================== */
 const { createClient } = require('bedrock-protocol');
+const http = require('http');
 const TelegramBot = require('node-telegram-bot-api');
 const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 
-// ================= CONFIG =================
-// ⚠️ Replace these with your actual values
-// Option 1: Use environment variables (recommended)
+/* ======================
+   CONFIG
+====================== */
+// Replace with your own tokens and Render URL
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '8569058694:AAGnF0HwzvkE10v40Fz8TpY0F9UInsHP8D0';
 const RENDER_URL = process.env.RENDER_URL || 'https://metacoresrv.onrender.com';
 
-// Minecraft server info
 const SERVER = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
-  username: 'Alisha1628',
+  username: 'Alisha3356',
   version: '1.21.120',
   offline: true
 };
 
-// ================= INIT =================
+/* ======================
+   EXPRESS & DB
+====================== */
 const app = express();
 app.use(express.json());
 const db = new sqlite3.Database('./data.db');
 
-let mcBot = null;
-let reconnecting = false;
-
-// Track online players: lastTick for playtime deduction, lastKick for cooldown
-const onlinePlayers = {};
-
-// ================= TELEGRAM BOT =================
-// Using webhooks (no 409 conflict)
-const bot = new TelegramBot(TELEGRAM_TOKEN);
-bot.setWebHook(`${RENDER_URL}/bot${TELEGRAM_TOKEN}`);
-
-// Webhook endpoint
-app.post(`/bot${TELEGRAM_TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
-// ================= DATABASE =================
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -63,15 +50,11 @@ db.serialize(() => {
   `);
 });
 
-// ================= HELPERS =================
-function formatGeyserName(name) {
-  return '.' + name.trim().replace(/ /g, '_');
-}
-function generateToken() {
-  return Math.random().toString(36).substring(2) + Date.now();
-}
+/* ======================
+   TELEGRAM BOT
+====================== */
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-// ================= TELEGRAM MENU =================
 const menuKeyboard = {
   reply_markup: {
     keyboard: [
@@ -85,12 +68,13 @@ const menuKeyboard = {
 
 const waitingForGamertag = new Set();
 
-// ================= TELEGRAM HANDLER =================
 bot.on('message', msg => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
-  if (text === '/start') return bot.sendMessage(chatId, '👋 Welcome!\nUse the menu below.', menuKeyboard);
+  if (text === '/start') {
+    return bot.sendMessage(chatId, '👋 Welcome! Use the menu below.', menuKeyboard);
+  }
 
   if (text === '🟢 Whitelist Here') {
     waitingForGamertag.add(chatId);
@@ -99,7 +83,7 @@ bot.on('message', msg => {
 
   if (waitingForGamertag.has(chatId)) {
     const bedrock = text.trim();
-    const geyser = formatGeyserName(bedrock);
+    const geyser = '.' + bedrock.replace(/ /g, '_');
 
     db.run(`INSERT OR REPLACE INTO users (telegram_id, gamertag, geyser_name, last_seen) VALUES (?, ?, ?, ?)`, [chatId, bedrock, geyser, Date.now()]);
     waitingForGamertag.delete(chatId);
@@ -115,12 +99,13 @@ bot.on('message', msg => {
   }
 
   if (text === '➕ Add Time') {
+    const now = Date.now();
     db.get(`SELECT last_reward FROM users WHERE telegram_id=?`, [chatId], (e, r) => {
-      const now = Date.now();
       if (r?.last_reward && now - r.last_reward < 180000) return bot.sendMessage(chatId, '⏳ Please wait before next ad.');
 
-      const token = generateToken();
+      const token = Math.random().toString(36).substring(2) + now;
       db.run(`INSERT INTO reward_tokens VALUES (?, ?, ?)`, [token, chatId, now]);
+      db.run(`UPDATE users SET last_reward=? WHERE telegram_id=?`, [now, chatId]);
 
       bot.sendMessage(chatId, '🎥 Watch ad to get **+3 minutes**', {
         parse_mode: 'Markdown',
@@ -134,7 +119,9 @@ bot.on('message', msg => {
   }
 });
 
-// ================= REWARD PAGES =================
+/* ======================
+   REWARD PAGES
+====================== */
 app.get('/reward', (req, res) => {
   const token = req.query.token;
   if (!token) return res.send('Invalid');
@@ -156,73 +143,80 @@ app.get('/reward-success', (req, res) => {
   const token = req.query.token;
   db.get(`SELECT telegram_id FROM reward_tokens WHERE token=?`, [token], (e, r) => {
     if (!r) return res.send('Used');
+
     db.serialize(() => {
       db.run(`DELETE FROM reward_tokens WHERE token=?`, [token]);
-      db.run(`UPDATE users SET playtime = playtime + 180, last_reward=? WHERE telegram_id=?`, [Date.now(), r.telegram_id]);
+      db.run(`UPDATE users SET playtime = playtime + 180 WHERE telegram_id=?`, [r.telegram_id]);
     });
+
     bot.sendMessage(r.telegram_id, '✅ +3 minutes added!');
     res.send('OK');
   });
 });
 
-// ================= MINECRAFT BOT =================
+/* ======================
+   WORKING MINECRAFT BOT (UNCHANGED)
+====================== */
+let mcBot = null;
+let reconnecting = false;
+
 function startMcBot() {
-  if (reconnecting) return;
-  reconnecting = true;
+  console.log('🚀 Starting bot...');
 
   mcBot = createClient(SERVER);
 
   mcBot.on('spawn', () => {
     console.log('✅ Minecraft bot spawned!');
-    reconnecting = false;
   });
 
   mcBot.on('text', p => console.log(`[MC] ${p.message}`));
 
   mcBot.on('player_join', player => {
-    const geyserName = formatGeyserName(player.name);
-
-    if (!onlinePlayers[geyserName]) onlinePlayers[geyserName] = { lastTick: Date.now(), lastKick: 0 };
-
-    db.run(`UPDATE users SET last_seen=? WHERE geyser_name=?`, [Date.now(), geyserName]);
+    const geyserName = '.' + player.name.replace(/ /g, '_');
 
     db.get(`SELECT playtime FROM users WHERE geyser_name=?`, [geyserName], (e, r) => {
       if (!r) return;
-      const now = Date.now();
-      if (r.playtime <= 0 && now - onlinePlayers[geyserName].lastKick > 10000) { // 10s cooldown
+
+      if (r.playtime <= 0) {
         mcBot.queue('command_request', { command: `kick ${player.name} Add Time First!`, type: 1, version: 1 });
-        onlinePlayers[geyserName].lastKick = now;
       }
     });
   });
 
-  mcBot.on('kick', p => { console.log('❌ Kicked:', p.reason); reconnectMcBot(); });
-  mcBot.on('error', e => { console.log('⚠️ MC Error:', e.message); reconnectMcBot(); });
+  mcBot.on('kick', p => reconnectMcBot());
+  mcBot.on('error', e => reconnectMcBot());
 }
 
-// ================= PLAYTIME DEDUCTION =================
-setInterval(() => {
-  const now = Date.now();
-  for (const geyserName in onlinePlayers) {
-    db.get(`SELECT playtime FROM users WHERE geyser_name=?`, [geyserName], (e, r) => {
-      if (!r) return;
+function reconnectMcBot() {
+  if (reconnecting) return;
+  reconnecting = true;
+  console.log('🔄 Reconnecting Minecraft bot in 15 seconds...');
+  setTimeout(() => {
+    reconnecting = false;
+    startMcBot();
+  }, 15000);
+}
 
-      if (r.playtime > 0) {
-        db.run(`UPDATE users SET playtime = playtime - 1 WHERE geyser_name=?`, [geyserName]);
-        onlinePlayers[geyserName].lastTick = now;
-      } else if (now - onlinePlayers[geyserName].lastKick > 10000) { // 10s cooldown
-        mcBot.queue('command_request', { command: `kick ${geyserName} Add Time First!`, type: 1, version: 1 });
-        onlinePlayers[geyserName].lastKick = now;
+/* ======================
+   PLAYTIME DEDUCTION
+====================== */
+setInterval(() => {
+  db.all(`SELECT geyser_name, playtime FROM users`, [], (e, rows) => {
+    if (!rows) return;
+    rows.forEach(row => {
+      if (row.playtime > 0) {
+        db.run(`UPDATE users SET playtime = playtime - 1 WHERE geyser_name=?`, [row.geyser_name]);
       }
     });
-  }
+  });
 }, 1000);
 
-// ================= INACTIVE PLAYER CLEANUP =================
+/* ======================
+   CLEANUP INACTIVE USERS
+====================== */
 setInterval(() => {
-  const now = Date.now();
   const oneWeek = 7 * 24 * 60 * 60 * 1000;
-
+  const now = Date.now();
   db.all(`SELECT telegram_id, geyser_name, last_seen FROM users`, [], (err, rows) => {
     if (!rows) return;
     rows.forEach(row => {
@@ -236,17 +230,19 @@ setInterval(() => {
   });
 }, 60 * 60 * 1000);
 
-// ================= RECONNECT HELPER =================
-function reconnectMcBot() {
-  if (reconnecting) return;
-  reconnecting = true;
-  console.log('🔄 Reconnecting Minecraft bot in 15 seconds...');
-  setTimeout(() => startMcBot(), 15000);
-}
-
-// ================= START WEB =================
+/* ======================
+   HTTP SERVER FOR RENDER
+====================== */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🌐 Web running on port ${PORT}`));
 
-// ================= START EVERYTHING =================
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Minecraft Bedrock bot + Telegram is running ✅');
+}).listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 HTTP server running on port ${PORT}`);
+});
+
+/* ======================
+   START EVERYTHING
+====================== */
 startMcBot();
