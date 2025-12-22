@@ -1,5 +1,5 @@
 // ================= IMPORTS =================
-const TelegramBot = require('node-telegram-bot-api');
+const TelegramBot = require('metacoresrv');
 const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 const net = require('net');
