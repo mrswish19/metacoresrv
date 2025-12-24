@@ -4,67 +4,58 @@ const http = require('http');
 /* ======================
    CONFIG
    ====================== */
-const BASE_CONFIG = {
+const CONFIG = {
   host: 'metacoresrv.aternos.me',
   port: 36614,
   offline: true,
-  version: '1.21.130'
+  version: '1.21.130',
+  username: 'Mikito2687'
 };
 
-const BOT_A = { ...BASE_CONFIG, username: 'Noxell' };
-const BOT_B = { ...BASE_CONFIG, username: 'Noxell_2' };
-
-const RECONNECT_DELAY = 3 * 1000; // 3 seconds
+const RECONNECT_DELAY = 3000; // 3 seconds
 
 /* ======================
    STATE
    ====================== */
-let afkIntervals = {};
-let reconnectTimers = {};
-let bots = {};
+let afkInterval = null;
+let moveInterval = null;
+let reconnectTimer = null;
+let bot = null;
 
 /* ======================
    CREATE BOT
    ====================== */
-function createBot(config, name) {
-  console.log(`🚀 Starting ${name}...`);
-  const bot = createClient(config);
-  bots[name] = bot;
+function startBot() {
+  console.log('🚀 Starting bot...');
+  bot = createClient(CONFIG);
 
   bot.on('spawn', () => {
-    console.log(`✅ ${name} spawned (AFK SAFE)`);
-    startAfkLoop(bot, name);
+    console.log('✅ Bot spawned!');
+    startAfkLoop();
+    startTinyMovement();
   });
 
-  bot.on('text', p => {
-    console.log(`[${name}] ${p.message}`);
-  });
+  bot.on('text', p => console.log(`[Server] ${p.message}`));
 
   const handleDisconnect = (reason) => {
-    console.log(`🔄 ${name} reconnecting in 3s... Reason:`, reason);
-
-    clearTimeout(reconnectTimers[name]);
-    reconnectTimers[name] = setTimeout(() => {
-      bots[name] = createBot(config, name);
-    }, RECONNECT_DELAY);
+    console.log(`🔄 Reconnecting in 3s... Reason:`, reason);
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(startBot, RECONNECT_DELAY);
   };
 
   bot.on('kick', p => handleDisconnect(p.reason));
   bot.on('error', e => handleDisconnect(e.message));
-
-  return bot;
 }
 
 /* ======================
-   100% AFK SAFE LOOP
+   AFK SAFE LOOP (sneak pulses)
    ====================== */
-function startAfkLoop(bot, name) {
-  if (afkIntervals[name]) clearInterval(afkIntervals[name]);
+function startAfkLoop() {
+  if (afkInterval) clearInterval(afkInterval);
 
-  afkIntervals[name] = setInterval(() => {
+  afkInterval = setInterval(() => {
     if (!bot?.entity?.runtime_id || !bot?.entity?.position) return;
 
-    // Minimal keep-alive (sneak pulse)
     bot.queue('player_action', {
       runtime_id: bot.entity.runtime_id,
       action: 1, // START_SNEAK
@@ -81,35 +72,64 @@ function startAfkLoop(bot, name) {
       });
     }, 250);
 
-    console.log(`[AFK] ${name} keep-alive pulse`);
+    console.log('[AFK] Sneak pulse sent');
   }, 90 * 1000);
 }
 
 /* ======================
-   START BOTH BOTS
+   TINY HUMAN-LIKE MOVEMENT
    ====================== */
-function startBothBots() {
-  createBot(BOT_A, 'BOT_A');
-  
-  // Start Bot B after 2 minutes
-  setTimeout(() => {
-    createBot(BOT_B, 'BOT_B');
-  }, 2 * 60 * 1000);
+function startTinyMovement() {
+  if (moveInterval) clearInterval(moveInterval);
+
+  let angle = Math.random() * Math.PI * 2;
+
+  moveInterval = setInterval(() => {
+    if (!bot?.entity?.position) return;
+
+    const pos = bot.entity.position;
+
+    // Tiny random movement, very subtle
+    const dx = (Math.random() - 0.5) * 0.05; // ±0.025 blocks
+    const dz = (Math.random() - 0.5) * 0.05;
+    angle += (Math.random() - 0.5) * 0.1; // small rotation
+
+    const newPos = {
+      x: pos.x + dx,
+      y: pos.y,
+      z: pos.z + dz
+    };
+
+    bot.queue('move_player', {
+      runtime_id: bot.entity.runtime_id,
+      position: newPos,
+      pitch: 0,
+      yaw: (angle * 180) / Math.PI,
+      head_yaw: (angle * 180) / Math.PI,
+      mode: 0,
+      on_ground: true,
+      riding_runtime_id: 0,
+      teleportation_cause: 0,
+      teleportation_item: 0
+    });
+
+    bot.entity.position = newPos;
+
+  }, 2000 + Math.random() * 1000); // 2–3 seconds between movements
 }
 
 /* ======================
-   START EVERYTHING
+   START BOT
    ====================== */
-startBothBots();
+startBot();
 
 /* ======================
    HTTP SERVER (RENDER REQUIRED)
    ====================== */
 const PORT = process.env.PORT || 3000;
-
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bedrock AFK bots are running ✅');
+  res.end('Bedrock AFK bot is running ✅');
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 HTTP server running on port ${PORT}`);
 });
