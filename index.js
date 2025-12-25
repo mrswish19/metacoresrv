@@ -4,7 +4,7 @@ const bot = createClient({
   host: 'metacoresrv.aternos.me', // 🧠 Use localhost or LAN server (not Aternos)
   port: 36614,       // Default Bedrock port
   offline: true,     // Offline mode must be enabled
-  version: '1.21.130',
+  version: '1.21.131',
   username: 'Noxell'
 });
 
