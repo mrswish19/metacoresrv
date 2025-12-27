@@ -6,6 +6,7 @@ const { createClient } = require('bedrock-protocol');
 const bot = createClient({
   host: 'metacoresrv.aternos.me',
   port: 36614,
+  offline: true,
   username: 'Noxell',
   version: '1.21.130'
 });
